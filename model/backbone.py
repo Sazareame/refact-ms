@@ -164,4 +164,5 @@ class IResNwt(nn.Cell):
             x_ = self.features(x_)
         
         # the operation to be done if set `use_anfl` was commented in pytorch version code, WHY?
+        # 破案了, this is because anfl is implemented in neck, correct?
         return x, x_ if self.with_pooling_fc_out else x
