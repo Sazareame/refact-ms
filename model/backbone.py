@@ -110,14 +110,15 @@ class IResNwt(nn.Cell):
             self.fc = nn.Dense(512 * block.expansion * self.fc_scale,
                                num_features) 
             self.features = nn.BatchNorm1d(num_features)
-        # Here in pytorch version, nn.init.constant_() is applied to
-        # self.features. I could not find the corresponding function
-        # in mindspore and do not know the reason either.
+            self.features.gamma.set_data(initializer(Constant(1.0)))
+            self.features.gamma.requires_grad = False
         
         for m in self.cells():
             if isinstance(m, nn.Conv2d):
                 m.weight.set_data(initializer(Normal(0.1, 0)))
-            # Also here the weight and bias of BatchNorm2d are initialized
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                m.gamma.set_data(initializer(Constant(1)))
+                m.beta.set_data(initializer(Constant(0)))
     
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False, with_cp=False):
         downsample = None
