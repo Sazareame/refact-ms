@@ -8,11 +8,9 @@ from typing import Optional, Any, Union, Callable
 from mindspore import Tensor
 from mindspore.common.initializer import Normal, Constant, initializer
 
-
-def bn_init(bn):
-    bn.weight.data.fill_(1)
-    bn.bias.data.zero_()
-
+# def bn_init(bn):
+#     bn.weight.data.fill_(1)
+#     bn.bias.data.zero_()
 
 class LinearBlock(nn.Cell):
     def __init__(self, in_features, out_features=None, drop=0.0):
@@ -36,29 +34,29 @@ def normalize_digraph(A: mindspore.Tensor):
     norm_A = ops.bmm(ops.bmm(norm_degs_matrix,A),norm_degs_matrix)
     return norm_A
 
-class CrossAttn(nn.Module):
-    """ cross attention Module"""
-    def __init__(self, in_channels):
-        super(CrossAttn, self).__init__()
-        self.in_channels = in_channels
-        self.linear_q = nn.Linear(in_channels, in_channels // 2)
-        self.linear_k = nn.Linear(in_channels, in_channels // 2)
-        self.linear_v = nn.Linear(in_channels, in_channels)
-        self.scale = (self.in_channels // 2) ** -0.5
-        self.attend = nn.Softmax(dim=-2)
+# class CrossAttn(nn.Module):
+#     """ cross attention Module"""
+#     def __init__(self, in_channels):
+#         super(CrossAttn, self).__init__()
+#         self.in_channels = in_channels
+#         self.linear_q = nn.Linear(in_channels, in_channels // 2)
+#         self.linear_k = nn.Linear(in_channels, in_channels // 2)
+#         self.linear_v = nn.Linear(in_channels, in_channels)
+#         self.scale = (self.in_channels // 2) ** -0.5
+#         self.attend = nn.Softmax(dim=-2)
 
-        self.linear_k.weight.data.normal_(0, math.sqrt(2. / (in_channels // 2)))
-        self.linear_q.weight.data.normal_(0, math.sqrt(2. / (in_channels // 2)))
-        self.linear_v.weight.data.normal_(0, math.sqrt(2. / in_channels))
+#         self.linear_k.weight.data.normal_(0, math.sqrt(2. / (in_channels // 2)))
+#         self.linear_q.weight.data.normal_(0, math.sqrt(2. / (in_channels // 2)))
+#         self.linear_v.weight.data.normal_(0, math.sqrt(2. / in_channels))
 
-    def forward(self, y, x):
-        query = self.linear_q(y)  # (bs, 12, h*w, c//2)  (bs, 12, c//2)
-        key = self.linear_k(x)  # (bs, 12, h*w, c//2)  (bs, 1, c//2)
-        value = self.linear_v(x)  # (bs, 12, h*w, c)  (bs, 1, c)
-        dots = torch.matmul(query, key.transpose(-2, -1)) * self.scale  # (bs, 12, h*w, h*w) (bs, 12, 1)  
-        attn = self.attend(dots)
-        out = torch.matmul(attn, value)  # (bs, 12, h*w, h*w)*(bs, 12, h*w, c)->(bs, 12, h*w, c)  # (bs, 12, 1)*(bs, 1, c)->(bs, 12, c)
-        return out
+#     def forward(self, y, x):
+#         query = self.linear_q(y)  # (bs, 12, h*w, c//2)  (bs, 12, c//2)
+#         key = self.linear_k(x)  # (bs, 12, h*w, c//2)  (bs, 1, c//2)
+#         value = self.linear_v(x)  # (bs, 12, h*w, c)  (bs, 1, c)
+#         dots = torch.matmul(query, key.transpose(-2, -1)) * self.scale  # (bs, 12, h*w, h*w) (bs, 12, 1)  
+#         attn = self.attend(dots)
+#         out = torch.matmul(attn, value)  # (bs, 12, h*w, h*w)*(bs, 12, h*w, c)->(bs, 12, h*w, c)  # (bs, 12, 1)*(bs, 1, c)->(bs, 12, c)
+#         return out
 
 class GNN(nn.Cel):
     def __init__(self, in_channels, num_classes, neighbor_num=4, metric='dots'):
@@ -123,39 +121,39 @@ class GNN(nn.Cel):
         x = self.relu(x + self.bnv(aggregate + self.U(x)))
         return x
 
-class GEM(nn.Module):
-    def __init__(self, in_channels, num_classes):
-        super(GEM, self).__init__()
-        self.in_channels = in_channels
-        self.num_classes = num_classes
-        self.FAM = CrossAttn(self.in_channels)
-        self.ARM = CrossAttn(self.in_channels)
-        self.edge_proj = nn.Linear(in_channels, in_channels)
-        self.bn = nn.BatchNorm2d(self.num_classes * self.num_classes)
+# class GEM(nn.Module):
+#     def __init__(self, in_channels, num_classes):
+#         super(GEM, self).__init__()
+#         self.in_channels = in_channels
+#         self.num_classes = num_classes
+#         self.FAM = CrossAttn(self.in_channels)
+#         self.ARM = CrossAttn(self.in_channels)
+#         self.edge_proj = nn.Linear(in_channels, in_channels)
+#         self.bn = nn.BatchNorm2d(self.num_classes * self.num_classes)
 
-        self.edge_proj.weight.data.normal_(0, math.sqrt(2. / in_channels))
-        self.bn.weight.data.fill_(1)
-        self.bn.bias.data.zero_()
+#         self.edge_proj.weight.data.normal_(0, math.sqrt(2. / in_channels))
+#         self.bn.weight.data.fill_(1)
+#         self.bn.bias.data.zero_()
 
-    def forward(self, class_feature, global_feature):
-        B, N, D, C = class_feature.shape  # (bs, 12, h*w, c)
-        global_feature = global_feature.repeat(1, N, 1).view(B, N, D, C)  # (bs, h*w, c)->(bs, 12, h*w, c)
-        feat = self.FAM(class_feature, global_feature)  # (bs, 12, h*w, c)
-        feat_end = feat.repeat(1, 1, N, 1).view(B, -1, D, C)
-        feat_start = feat.repeat(1, N, 1, 1).view(B, -1, D, C)
-        feat = self.ARM(feat_start, feat_end)
-        edge = self.bn(self.edge_proj(feat))
-        return edge
+#     def forward(self, class_feature, global_feature):
+#         B, N, D, C = class_feature.shape  # (bs, 12, h*w, c)
+#         global_feature = global_feature.repeat(1, N, 1).view(B, N, D, C)  # (bs, h*w, c)->(bs, 12, h*w, c)
+#         feat = self.FAM(class_feature, global_feature)  # (bs, 12, h*w, c)
+#         feat_end = feat.repeat(1, 1, N, 1).view(B, -1, D, C)
+#         feat_start = feat.repeat(1, N, 1, 1).view(B, -1, D, C)
+#         feat = self.ARM(feat_start, feat_end)
+#         edge = self.bn(self.edge_proj(feat))
+#         return edge
     
-def create_e_matrix(n):
-    end = torch.zeros((n*n,n))
-    for i in range(n):
-        end[i * n:(i + 1) * n, i] = 1
-    start = torch.zeros(n, n)
-    for i in range(n):
-        start[i, i] = 1
-    start = start.repeat(n,1)
-    return start,end
+# def create_e_matrix(n):
+#     end = torch.zeros((n*n,n))
+#     for i in range(n):
+#         end[i * n:(i + 1) * n, i] = 1
+#     start = torch.zeros(n, n)
+#     for i in range(n):
+#         start[i, i] = 1
+#     start = start.repeat(n,1)
+#     return start,end
 
 class MAD(nn.Cell):
     def __init__(self, local_attention_num=12, p=0.0):
@@ -186,38 +184,38 @@ class MAD(nn.Cell):
 
 def _get_activation_fn(activation: str) -> Callable[[Tensor], Tensor]:
     if activation == "relu":
-        return F.relu
+        return ops.relu
     elif activation == "gelu":
-        return F.gelu
+        return ops.gelu
 
     raise RuntimeError("activation should be relu/gelu, not {}".format(activation))
 
-class MyTransformerEncoderLayer(nn.Module):
+class MyTransformerEncoderLayer(nn.Cell):
    
     def __init__(self, d_model: int, nhead: int, dim_feedforward: int = 3072, dropout: float = 0.1,
-                 activation: Union[str, Callable[[Tensor], Tensor]] = F.relu,
+                 activation: Union[str, Callable[[Tensor], Tensor]] = ops.relu,
                  layer_norm_eps: float = 1e-5, batch_first: bool = False, norm_first: bool = False,
                  device=None, dtype=None) -> None:
-        factory_kwargs = {'device': device, 'dtype': dtype}
+        factory_kwargs = {'dtype': dtype}
         super(MyTransformerEncoderLayer, self).__init__()
-        self.self_attn = MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
                                             **factory_kwargs)
-        self.linear1 = Linear(d_model, dim_feedforward, **factory_kwargs)
+        self.linear1 = nn.Dense(d_model, dim_feedforward, **factory_kwargs)
 
-        self.dropout = Dropout(dropout)
-        self.linear2 = Linear(dim_feedforward, d_model, **factory_kwargs)
+        self.dropout = nn.Dropout(p=dropout)
+        self.linear2 = nn.Dense(dim_feedforward, d_model, **factory_kwargs)
 
 
 
         self.norm_first = norm_first
-        self.norm1 = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm1 = nn.LayerNorm(d_model, epsilon=layer_norm_eps, **factory_kwargs)
 
 
-        self.norm2 = LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.norm2 = nn.LayerNorm(d_model, epsilon=layer_norm_eps, **factory_kwargs)
 
 
-        self.dropout1 = Dropout(dropout)
-        self.dropout2 = Dropout(dropout)
+        self.dropout1 = nn.Dropout(p=dropout)
+        self.dropout2 = nn.Dropout(p=dropout)
 
         # Legacy string support for activation function.
         if isinstance(activation, str):
@@ -225,9 +223,9 @@ class MyTransformerEncoderLayer(nn.Module):
 
         # We can't test self.activation in forward() in TorchScript,
         # so stash some information about it instead.
-        if activation is F.relu:
+        if activation is ops.relu:
             self.activation_relu_or_gelu = 1
-        elif activation is F.gelu:
+        elif activation is ops.gelu:
             self.activation_relu_or_gelu = 2
         else:
             self.activation_relu_or_gelu = 0
@@ -236,10 +234,10 @@ class MyTransformerEncoderLayer(nn.Module):
     def __setstate__(self, state):
         super(MyTransformerEncoderLayer, self).__setstate__(state)
         if not hasattr(self, 'activation'):
-            self.activation = F.relu
+            self.activation = ops.relu
 
 
-    def forward(self, src: Tensor, src_mask: Optional[Tensor] = None,
+    def construct(self, src: Tensor, src_mask: Optional[Tensor] = None,
                 src_key_padding_mask: Optional[Tensor] = None) -> Tensor:
         r"""Pass the input through the encoder layer.
 
@@ -340,30 +338,31 @@ class CSRAModule(nn.Cell):
             Defaults to use dict(type='Normal', layer='Linear', std=0.01).
     """
 
-    def __init__(self, num_classes, in_channels, T, lam, use_gap=True, init_cfg=None):
+    def __init__(self, num_classes, in_channels, T, lam, use_gap=True):
 
-        super(CSRAModule, self).__init__(init_cfg=init_cfg)
+        super(CSRAModule, self).__init__()
         self.T = T  # temperature
         self.lam = lam  # Lambda
+        # NOTE the conv2d may need to be adjusted
         self.head = nn.Conv2d(in_channels, num_classes, 1, bias=False)
-        self.softmax = nn.Softmax(dim=2)
+        self.softmax = nn.Softmax(axis=2)
         self.use_gap = use_gap
 
-    def forward(self, x):
-        score = self.head(x) / torch.norm(
-            self.head.weight, dim=1, keepdim=True).transpose(0, 1)
-        score = score.flatten(2) # (bs, numcls, h*w)
+    def construct(self, x):
+        score = self.head(x) / ops.norm(
+            self.head.weight, dim=1, keepdim=True).swapaxes(0, 1)
+        score = score.flatten(start_dim=2) # (bs, numcls, h*w)
 
         if self.use_gap:
-            base_logit = torch.mean(score, dim=2)
+            base_logit = ops.mean(score, axis=2)
         else:
             base_logit = 0.0
 
         if self.T == 99:  # max-pooling
-            att_logit = torch.max(score, dim=2)[0]
+            att_logit = ops.max(score, axis=2)[0]
         else:
             score_soft = self.softmax(score * self.T) # (bs, numcls, h*w)
-            att_logit = torch.sum(score * score_soft, dim=2)
+            att_logit = ops.sum(score * score_soft, dim=2)
 
         return base_logit + self.lam * att_logit
 
@@ -413,6 +412,8 @@ class Anfl_Neck(nn.Cell):
         if use_lanet:
             self.lanets = nn.SequentialCell()
             for i in range(local_attention_num):
+                # NOTE there might need some adjustment due to the difference between
+                # conv2d in pytorch and mindspore
                 self.lanets.insert_child_to_cell('neck_lanets{}'.format(i), 
                                     nn.SequentialCell(nn.Conv2d(in_channels, in_channels//channel_reduction_rate, 1),
                                                 #   nn.ReLU(),
@@ -430,7 +431,7 @@ class Anfl_Neck(nn.Cell):
                 self.encoder_layers.add_module('neck_transformer_layer{}'.format(i), MyTransformerEncoderLayer(d_model=in_channels, 
                 nhead=multi_heads_num, batch_first=True))
 
-    def forward(self, x):
+    def construct(self, x):
         
         if self.with_backbone_logit:
             x_ = x
@@ -447,12 +448,14 @@ class Anfl_Neck(nn.Cell):
                 lanet_outs.append(self.lanets[i](x))
             lanet_outs = tuple(lanet_outs)
             
-            outs = torch.sigmoid(torch.cat(lanet_outs, dim=1)) # (bs, atten_map_num, h, w)
+            # NOTE function `cat` in mindspore needs the input tensors have the
+            # same percision, which might raise error here.
+            outs = ops.sigmoid(ops.cat(lanet_outs, axis=1)) # (bs, atten_map_num, h, w)
             # outs = torch.sigmoid(outs)
             
             outs = self.mad(outs)
-            local_atten_map = torch.max(outs, 1, keepdim=True)[0]
-            x = torch.mul(local_atten_map, x) #(b, 512, h, w)
+            local_atten_map = ops.max(outs, 1, keepdims=True)[0]
+            x = ops.mul(local_atten_map, x) #(b, 512, h, w)
         
 
         b, c, _, _ = x.shape
@@ -464,36 +467,19 @@ class Anfl_Neck(nn.Cell):
         f_u = []
         for i, layer in enumerate(self.class_linears):
             f_u.append(layer(x).unsqueeze(1))  # (bs, h*w, c) -> (bs, 1, h*w, c')
-        f_u = torch.cat(f_u, dim=1)  # (bs, num_classes, h*w, c')
+        f_u = ops.cat(f_u, axis=1)  # (bs, num_classes, h*w, c')
 
-        f_v = f_u.mean(dim=-2)  # gap (bs, num_classes, c')
+        f_v = f_u.mean(axis=-2)  # gap (bs, num_classes, c')
 
         # FGG
         f_v = self.gnn(f_v)  # (bs, num_classes, c')
 
-        # f_e = self.edge_extractor(f_u, x)
-        # f_e = f_e.mean(dim=-2)
-        # f_v, f_e = self.gnn(f_v, f_e)
-
-        # b, n, c = f_v.shape
-        # sc = self.sc
-        # sc = self.relu(sc)
-        # sc = F.normalize(sc, p=2, dim=-1)
-        # cl = F.normalize(f_v, p=2, dim=-1)
-
-        # cl = (cl * sc.view(1, n, c)).sum(dim=-1)
-        # return cl
         if self.use_self_attn_fusion:
-            fusion_weight_token = self.fusion_weight_token.expand(b, -1, -1)
+            fusion_weight_token = self.fusion_weight_token.broadcast_to((b, -1, -1))
             _backbone_out = backbone_out.unsqueeze(1)
-            trans_inputs = torch.cat((fusion_weight_token, _backbone_out, f_v), dim=1)  # [B, 1 + 1 + 12, in_channel]
+            trans_inputs = ops.cat((fusion_weight_token, _backbone_out, f_v), axis=1)  # [B, 1 + 1 + 12, in_channel]
             trans_outs = self.encoder_layers(trans_inputs)[:, 0]
             
-            # fusion_logits = self.bn_fc(self.cross_attn_fusion(f_v, backbone_out)).permute(0, 2, 1).contiguous()
-            # fusion_logits = self.bn(fusion_logits).permute(0, 2, 1).contiguous()
-            
-        
-        
         if self.with_backbone_logit and not self.use_self_attn_fusion:
             return f_v, backbone_out
         elif self.use_csra:
@@ -503,61 +489,61 @@ class Anfl_Neck(nn.Cell):
         else:
             return f_v
 
-    def simple_test(self, x):
+    # def simple_test(self, x):
 
-        if self.with_backbone_logit:
-            x_ = x
-            backbone_out = x_[1]
-            x = x_[0]
+    #     if self.with_backbone_logit:
+    #         x_ = x
+    #         backbone_out = x_[1]
+    #         x = x_[0]
 
-        if self.use_csra:
-            csra_outs = self.residual_attention(x)
+    #     if self.use_csra:
+    #         csra_outs = self.residual_attention(x)
 
-        # local_cnn
-        if self.use_lanet:
-            lanet_outs = [] # x (bs, c, h, w)
-            for i in range(self.local_attention_num):
-                lanet_outs.append(self.lanets[i](x))
-            lanet_outs = tuple(lanet_outs)
+    #     # local_cnn
+    #     if self.use_lanet:
+    #         lanet_outs = [] # x (bs, c, h, w)
+    #         for i in range(self.local_attention_num):
+    #             lanet_outs.append(self.lanets[i](x))
+    #         lanet_outs = tuple(lanet_outs)
             
-            outs = torch.sigmoid(torch.cat(lanet_outs, dim=1)) # (bs, atten_map_num, h, w)
-            local_atten_map = torch.max(outs, 1, keepdim=True)[0]
-            x = torch.mul(local_atten_map, x) #(b, 512, h, w)
+    #         outs = torch.sigmoid(torch.cat(lanet_outs, dim=1)) # (bs, atten_map_num, h, w)
+    #         local_atten_map = torch.max(outs, 1, keepdim=True)[0]
+    #         x = torch.mul(local_atten_map, x) #(b, 512, h, w)
 
-        b, c, _, _ = x.shape
-        x = x.view(b,c,-1).permute(0,2,1)
+    #     b, c, _, _ = x.shape
+    #     x = x.view(b,c,-1).permute(0,2,1)
 
-        x = self.global_linear(x)
+    #     x = self.global_linear(x)
 
-        # AFG
-        f_u = []
-        for i, layer in enumerate(self.class_linears):
-            f_u.append(layer(x).unsqueeze(1))  # (bs, h*w, c) -> (bs, 1, h*w, c')
-        f_u = torch.cat(f_u, dim=1)  # (bs, num_classes, h*w, c')
-        f_v = f_u.mean(dim=-2)  # gap (bs, num_classes, c')
-        # FGG
-        f_v = self.gnn(f_v)  # (bs, num_classes, c')
+    #     # AFG
+    #     f_u = []
+    #     for i, layer in enumerate(self.class_linears):
+    #         f_u.append(layer(x).unsqueeze(1))  # (bs, h*w, c) -> (bs, 1, h*w, c')
+    #     f_u = torch.cat(f_u, dim=1)  # (bs, num_classes, h*w, c')
+    #     f_v = f_u.mean(dim=-2)  # gap (bs, num_classes, c')
+    #     # FGG
+    #     f_v = self.gnn(f_v)  # (bs, num_classes, c')
 
-        # f_e = self.edge_extractor(f_u, x)
-        # f_e = f_e.mean(dim=-2)
-        # f_v, f_e = self.gnn(f_v, f_e)
-
-        
-        if self.use_self_attn_fusion:
-            fusion_weight_token = self.fusion_weight_token.expand(b, -1, -1)
-            _backbone_out = backbone_out.unsqueeze(1)
-            trans_inputs = torch.cat((fusion_weight_token, _backbone_out, f_v), dim=1)  # [B, 1 + 1 + 12, in_channel]
-            trans_outs = self.encoder_layers(trans_inputs)[:, 0]
+    #     # f_e = self.edge_extractor(f_u, x)
+    #     # f_e = f_e.mean(dim=-2)
+    #     # f_v, f_e = self.gnn(f_v, f_e)
 
         
-        if self.with_backbone_logit and not self.use_self_attn_fusion:
-            return f_v, backbone_out
-        elif self.use_csra:
-            return f_v, csra_outs
-        elif self.use_self_attn_fusion:
-            return f_v, backbone_out, trans_outs
-        else:
-            return f_v
+    #     if self.use_self_attn_fusion:
+    #         fusion_weight_token = self.fusion_weight_token.expand(b, -1, -1)
+    #         _backbone_out = backbone_out.unsqueeze(1)
+    #         trans_inputs = torch.cat((fusion_weight_token, _backbone_out, f_v), dim=1)  # [B, 1 + 1 + 12, in_channel]
+    #         trans_outs = self.encoder_layers(trans_inputs)[:, 0]
+
+        
+    #     if self.with_backbone_logit and not self.use_self_attn_fusion:
+    #         return f_v, backbone_out
+    #     elif self.use_csra:
+    #         return f_v, csra_outs
+    #     elif self.use_self_attn_fusion:
+    #         return f_v, backbone_out, trans_outs
+    #     else:
+    #         return f_v
 
 
 
